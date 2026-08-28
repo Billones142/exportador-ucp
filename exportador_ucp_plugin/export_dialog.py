@@ -1,5 +1,7 @@
 """Dialogo del plugin: elegir carpeta base, asignar capas por rol y exportar."""
 
+import os
+
 from qgis.core import Qgis, QgsProject
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -29,7 +31,10 @@ class ExportDialog(QDialog):
         self.role_status = {}
 
         project = QgsProject.instance()
-        self.matches, self.vector_layers = core.detect_matches(project)
+        matches, self.vector_layers = core.detect_matches(project)
+        # La ultima seleccion manual guardada en el proyecto tiene prioridad sobre la
+        # deteccion automatica por nombre, mientras siga apuntando a una capa cargada.
+        self.resolved = core.resolve_selection(project, matches)
 
         layout = QVBoxLayout(self)
 
@@ -43,17 +48,25 @@ class ExportDialog(QDialog):
         folder_row.addWidget(pick_btn)
         layout.addLayout(folder_row)
 
+        saved_base_dir = core.load_base_dir(project)
+        if saved_base_dir and os.path.isdir(saved_base_dir):
+            self.base_dir = saved_base_dir
+            self.folder_edit.setText(saved_base_dir)
+
         form = QFormLayout()
         for role in core.ROLES:
             combo = QComboBox()
             combo.addItem("-- Ninguna / omitir --", None)
             for lyr in self.vector_layers:
                 combo.addItem(lyr.name(), lyr.id())
-            matched = self.matches.get(role.key)
+            matched = self.resolved.get(role.key)
             if matched is not None:
                 idx = combo.findData(matched.id())
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
+            # Conectar despues de fijar el valor inicial: solo se persiste un cambio
+            # cuando lo hace el usuario, no la preseleccion automatica al abrir el dialogo.
+            combo.currentIndexChanged.connect(lambda _idx, k=role.key: self._persist_role_choice(k))
             status = QLabel("")
             self.role_combos[role.key] = combo
             self.role_status[role.key] = status
@@ -68,7 +81,7 @@ class ExportDialog(QDialog):
         layout.addWidget(self.log)
 
         self.export_btn = QPushButton("Exportar")
-        self.export_btn.setEnabled(False)
+        self.export_btn.setEnabled(self.base_dir is not None)
         self.export_btn.clicked.connect(self.do_export)
         close_btn = QPushButton("Cerrar")
         close_btn.clicked.connect(self.close)
@@ -78,11 +91,22 @@ class ExportDialog(QDialog):
         layout.addLayout(btn_row)
 
     def pick_folder(self):
-        chosen = QFileDialog.getExistingDirectory(self, "Elegir carpeta base", "")
+        chosen = QFileDialog.getExistingDirectory(self, "Elegir carpeta base", self.base_dir or "")
         if chosen:
             self.base_dir = chosen
             self.folder_edit.setText(chosen)
             self.export_btn.setEnabled(True)
+            core.save_base_dir(QgsProject.instance(), chosen)
+
+    def _persist_role_choice(self, role_key):
+        project = QgsProject.instance()
+        saved = core.load_role_layer_ids(project)
+        layer_id = self.role_combos[role_key].currentData()
+        if layer_id is None:
+            saved.pop(role_key, None)
+        else:
+            saved[role_key] = layer_id
+        core.save_role_layer_ids(project, saved)
 
     def selected_pairs(self):
         project = QgsProject.instance()
@@ -120,6 +144,7 @@ class ExportDialog(QDialog):
 
         project = QgsProject.instance()
         tctx = project.transformContext()
+        saved_role_layer_ids = core.load_role_layer_ids(project)
         ok_count = 0
         fail_count = 0
 
@@ -143,6 +168,11 @@ class ExportDialog(QDialog):
             ok_count += 1
             self.role_status[role.key].setText("OK")
             self.log.appendPlainText(f"[{role.key}] -> {role.rel_path} ({role.final_name}) OK")
+            # La capa vieja se removio del proyecto y la nueva tiene un id distinto:
+            # se actualiza la seleccion guardada para que apunte a la capa vigente.
+            saved_role_layer_ids[role.key] = new_layer.id()
+
+        core.save_role_layer_ids(project, saved_role_layer_ids)
 
         skipped = len(core.ROLES) - len(pairs)
         summary = f"Exportacion terminada: {ok_count} OK, {fail_count} con error, {skipped} omitidas."

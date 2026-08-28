@@ -1,9 +1,18 @@
 """Logica de exportacion de capas OSM a Shapefile/GeoPackage/SpatiaLite (sin dependencias de Qt)."""
 
+import json
 import os
 from collections import namedtuple
 
 from qgis.core import QgsVectorLayer, QgsVectorFileWriter
+
+# Ambito usado para guardar las preferencias del plugin como propiedades personalizadas
+# del proyecto (QgsProject.writeEntry/readEntry). Al vivir en el objeto QgsProject en
+# memoria, sobreviven mientras dure la sesion aunque el proyecto no se guarde a disco;
+# si el proyecto SI se guarda (.qgz/.qgs), tambien quedan persistidas entre sesiones.
+PROJECT_SCOPE = "ExportadorUCP"
+_BASE_DIR_KEY = "base_dir"
+_ROLE_LAYER_IDS_KEY = "role_layer_ids"
 
 RoleSpec = namedtuple(
     "RoleSpec",
@@ -89,6 +98,47 @@ def detect_matches(project):
                 claimed_ids.add(found.id())
 
     return matches, vector_layers
+
+
+def load_base_dir(project):
+    """Ultima carpeta base guardada en el proyecto, o None si no hay ninguna."""
+    value, ok = project.readEntry(PROJECT_SCOPE, _BASE_DIR_KEY, "")
+    return value if ok and value else None
+
+
+def save_base_dir(project, base_dir):
+    project.writeEntry(PROJECT_SCOPE, _BASE_DIR_KEY, base_dir)
+
+
+def load_role_layer_ids(project):
+    """dict role.key -> layer_id guardado en el proyecto (puede referenciar capas que ya no existen)."""
+    value, ok = project.readEntry(PROJECT_SCOPE, _ROLE_LAYER_IDS_KEY, "")
+    if not ok or not value:
+        return {}
+    try:
+        data = json.loads(value)
+        return data if isinstance(data, dict) else {}
+    except ValueError:
+        return {}
+
+
+def save_role_layer_ids(project, role_layer_ids):
+    project.writeEntry(PROJECT_SCOPE, _ROLE_LAYER_IDS_KEY, json.dumps(role_layer_ids))
+
+
+def resolve_selection(project, matches):
+    """Combina la deteccion automatica (matches) con la ultima seleccion manual guardada
+    en el proyecto: la seleccion guardada gana si sigue apuntando a una capa cargada;
+    si no, se usa la coincidencia automatica. Devuelve dict role.key -> QgsVectorLayer o None."""
+    saved_ids = load_role_layer_ids(project)
+    resolved = dict(matches)
+    for role in ROLES:
+        layer_id = saved_ids.get(role.key)
+        if layer_id:
+            layer = project.mapLayer(layer_id)
+            if layer is not None:
+                resolved[role.key] = layer
+    return resolved
 
 
 def ensure_output_dirs(base_dir):
