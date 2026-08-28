@@ -1,0 +1,12 @@
+[general]
+name=Exportador UCP
+description=Exporta y reemplaza en el proyecto capas OSM a Shapefile, GeoPackage y SpatiaLite con formato/ruta/nombre correctos
+version=0.1
+qgisMinimumVersion=3.0
+qgisMaximumVersion=4.99
+author=Stefano Merino De Rui
+email=stefanomerinoderui@gmail.com
+category=Vector
+
+[about]
+about=Detecta las capas temporales de QuickOSM (building, landuse, boundary_protected_area, natural_water, highway, waterway_river, place), permite corregir la asignacion manualmente, y las guarda en disco en los formatos/rutas/nombres correspondientes, reemplazandolas en el proyecto por las versiones en disco.
