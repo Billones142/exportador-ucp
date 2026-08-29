@@ -43,7 +43,28 @@ QGIS busca los plugins en la carpeta `python/plugins` del perfil activo. Esa car
 
 Si usás un perfil de QGIS distinto de `default`, reemplazá esa parte de la ruta por el nombre de tu perfil (podés verlo en QGIS en **Configuración ► Perfiles de usuario**).
 
-### Opción A — Clonar/copiar la carpeta del plugin (recomendada)
+### Windows — instalación con un solo comando
+
+Con QGIS ya instalado (al menos abierto una vez, para que exista su perfil), abrí **PowerShell** (no `cmd.exe`) y ejecutá:
+
+```powershell
+irm https://raw.githubusercontent.com/Billones142/exportador-ucp/main/install.ps1 | iex
+```
+
+Esto descarga el repositorio, detecta automáticamente la carpeta de plugins de tu instalación de QGIS (probando `QGIS4`, `QGIS3`, etc. bajo `%APPDATA%\QGIS`) y copia ahí la carpeta `exportador_ucp_plugin/`, reemplazando una instalación anterior si existía. Al terminar, solo falta reiniciar QGIS y activar el plugin (ver [Activar el plugin](#activar-el-plugin)).
+
+No hace falta permisos de administrador ni cambiar la política de ejecución: al correrlo con `irm | iex` el script nunca se guarda en disco, así que la restricción de ejecutar `.ps1` sin firmar no aplica.
+
+Variables opcionales, si las necesitás (definilas antes de correr el comando de arriba):
+
+```powershell
+$env:EXPORTADOR_UCP_PROFILE = "otro_perfil"                              # si no usás el perfil "default"
+$env:EXPORTADOR_UCP_PLUGINS_DIR = "D:\ruta\personalizada\python\plugins" # para instalaciones portables de QGIS
+```
+
+El script vive en [`install.ps1`](install.ps1) en la raíz de este repositorio, por si preferís revisarlo antes de correrlo.
+
+### Opción A — Clonar/copiar la carpeta del plugin (recomendada en Linux/macOS)
 
 1. Cloná este repositorio en cualquier ubicación:
 
@@ -100,10 +121,11 @@ En cualquiera de los dos casos, andá a **Complementos ► Administrar/Instalar 
 
 ```
 exportador-ucp/
-└── exportador_ucp_plugin/      # carpeta del plugin (esta es la que se instala en QGIS)
+├── install.ps1                  # instalador de un comando para Windows (irm | iex)
+└── exportador_ucp_plugin/       # carpeta del plugin (esta es la que se instala en QGIS)
     ├── __init__.py
     ├── metadata.txt
-    ├── plugin.py                # registro en QGIS (initGui/unload/run)
-    ├── export_logic.py          # lógica de exportación (sin dependencias de Qt)
-    └── export_dialog.py         # diálogo (selector de carpeta, asignación por capa, log)
+    ├── plugin.py                 # registro en QGIS (initGui/unload/run)
+    ├── export_logic.py           # lógica de exportación (sin dependencias de Qt)
+    └── export_dialog.py          # diálogo (selector de carpeta, asignación por capa, log)
 ```
